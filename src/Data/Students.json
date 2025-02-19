@@ -1,0 +1,7 @@
+[
+    { "id": 1, "name": "Nivi", "class": "10", "section": "A", "contactNumber": "9876543210", "status": "Active" },
+    { "id": 2, "name": "Sabi", "class": "9", "section": "B", "contactNumber": "8765432109", "status": "Inactive" },
+    { "id": 3, "name": "Cerlin", "class": "8", "section": "C", "contactNumber": "7654321098", "status": "Active" }
+    
+  ]
+  
