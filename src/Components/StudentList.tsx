@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
-import Skeleton from "./Skeleton";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 interface Student {
   id: number;
@@ -11,131 +10,186 @@ interface Student {
 }
 
 const StudentList: React.FC = () => {
-  const [students, setStudents] = useState<Student[] | null>(null);
-  const [bgColor, setBgColor] = useState("white");
+  const [students, setStudents] = useState<Student[]>([]);
   const [clickCounts, setClickCounts] = useState<{ [key: number]: number }>({});
-  const renderCount = useRef(1); 
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const pageRef = useRef(1);
+  const observer = useRef<IntersectionObserver | null>(null);
+  const renderCount = useRef(0);
+  const isFirstMount = useRef(true);
+  const [backgroundColor, setBackgroundColor] = useState("#f8f9fa");
+
+  renderCount.current += 1;
 
   useEffect(() => {
-    if (renderCount.current > 1) {
-      setBgColor("red"); 
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+    } else {
+      setBackgroundColor("#ffcccc");
     }
-    renderCount.current += 1; 
-  });
+  }, []);
 
   useEffect(() => {
+    fetchMoreStudents();
+  }, []);
+
+  const fetchMoreStudents = useCallback(() => {
+    if (loading || !hasMore) return;
+
+    setLoading(true);
     setTimeout(() => {
       import("../data/students.json")
         .then((data) => {
-          setStudents(data.default);
+          const totalRecords = data.default.length;
+          const startIndex = (pageRef.current - 1) * 10;
+          const endIndex = pageRef.current * 10;
 
-          const initialClickCounts: { [key: number]: number } = {};
-          data.default.forEach((student: Student) => {
-            initialClickCounts[student.id] = 0;
-          });
-          setClickCounts(initialClickCounts);
+          const newStudents = data.default.slice(startIndex, endIndex);
+
+          if (newStudents.length > 0) {
+            setStudents((prev) => [...prev, ...newStudents]);
+            pageRef.current += 1;
+          }
+
+          if (endIndex >= totalRecords) {
+            setHasMore(false);
+          }
         })
-        .catch((error) => console.error("Error loading student data:", error));
-    }, 2000);
-  }, []);
+        .catch((error) => console.error("Error loading students:", error))
+        .finally(() => setLoading(false));
+    }, 1000);
+  }, [loading, hasMore]);
 
+  const lastStudentRef = useCallback(
+    (node: HTMLTableRowElement | null) => {
+      if (!hasMore) return;
+      if (observer.current) observer.current.disconnect();
+
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          fetchMoreStudents();
+        }
+      });
+
+      if (node) observer.current.observe(node);
+    },
+    [fetchMoreStudents, hasMore]
+  );
+
+  // ✅ Function to handle student row click
   const handleStudentClick = (id: number) => {
-    setClickCounts((prev) => ({
-      ...prev,
-      [id]: prev[id] + 1,
+    setClickCounts((prevCounts) => ({
+      ...prevCounts,
+      [id]: (prevCounts[id] || 0) + 1,
     }));
   };
 
   return (
-    <div
-      style={{
-        marginTop: "30px",
-        position: "relative",
-        padding: "20px",
-        backgroundColor: bgColor,
-        borderRadius: "10px",
-        transition: "background-color 0.5s ease-in-out",
-      }}
-    >
-      <h2></h2>
-
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-        }}
-      >
-        <thead style={{ textAlign: "center" }}>
-          <tr>
-            <th style={thStyle}>Student ID</th>
-            <th style={thStyle}>Full Name</th>
-            <th style={thStyle}>Class/Grade</th>
-            <th style={thStyle}>Section</th>
-            <th style={thStyle}>Contact Number</th>
-            <th style={thStyle}>Status</th>
-            <th style={thStyle}>Click Count</th>
-          </tr>
-        </thead>
-        <tbody style={{ textAlign: "center" }}>
-          {students ? (
-            students.map((student) => (
+    <div style={{ ...styles.container, backgroundColor }}>
+      <div style={styles.reRenderCount}>Re-renders: {renderCount.current}</div>
+      <div style={styles.scrollableContainer}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>ID</th>
+              <th style={styles.th}>Name</th>
+              <th style={styles.th}>Class</th>
+              <th style={styles.th}>Section</th>
+              <th style={styles.th}>Contact</th>
+              <th style={styles.th}>Status</th>
+              <th style={styles.th}>Clicks</th>
+            </tr>
+          </thead>
+          <tbody>
+            {students.map((student, index) => (
               <tr
                 key={student.id}
+                ref={index === students.length - 1 ? lastStudentRef : null}
+                style={styles.tr}
                 onClick={() => handleStudentClick(student.id)}
-                style={{
-                  cursor: "pointer",
-                  backgroundColor: clickCounts[student.id] ? "#f0f0f0" : "white",
-                }}
               >
-                <td style={tdStyle}>{student.id}</td>
-                <td style={tdStyle}>{student.name}</td>
-                <td style={tdStyle}>{student.class}</td>
-                <td style={tdStyle}>{student.section}</td>
-                <td style={tdStyle}>{student.contactNumber}</td>
-                <td style={tdStyle}>{student.status}</td>
-                <td style={tdStyle}>{clickCounts[student.id] || 0}</td>
+                <td style={styles.td}>{student.id}</td>
+                <td style={styles.td}>{student.name}</td>
+                <td style={styles.td}>{student.class}</td>
+                <td style={styles.td}>{student.section}</td>
+                <td style={styles.td}>{student.contactNumber}</td>
+                <td style={styles.td}>{student.status}</td>
+                <td style={styles.td}>{clickCounts[student.id] || 0}</td>
               </tr>
-            ))
-          ) : (
-            
-            Array.from({ length: 5 }).map((_, index) => (
-              <tr key={index}>
-                <td style={tdStyle} colSpan={7}>
-                  <Skeleton />
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-
-      <div
-        style={{
-          position: "absolute",
-          top: "10px",
-          right: "10px",
-          backgroundColor: "rgba(0, 0, 0, 0.1)",
-          padding: "5px 10px",
-          borderRadius: "5px",
-          fontSize: "12px",
-        }}
-      >
-        Renders: {renderCount.current}
+            ))}
+            {loading &&
+              Array(3)
+                .fill(null)
+                .map((_, index) => (
+                  <tr key={`skeleton-${index}`} style={styles.skeletonRow}>
+                    <td style={styles.skeletonCell} colSpan={7}></td>
+                  </tr>
+                ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 };
 
-const thStyle = {
-  padding: "10px",
-  border: "1px solid #ddd",
-  backgroundColor: "#f4f4f4",
-  textAlign: "left" as const,
-};
-
-const tdStyle = {
-  padding: "10px",
-  border: "1px solid #ddd",
+const styles = {
+  container: {
+    top:"3%",
+    width: "100%",
+    padding: "20px",
+    position: "relative",
+    transition: "background-color 0.5s ease-in-out",
+  } as React.CSSProperties,
+  reRenderCount: {
+    position: "absolute",
+    top: "-50px",
+    right: "40px",
+    backgroundColor: "#007bff",
+    color: "white",
+    padding: "5px 10px",
+    borderRadius: "5px",
+    fontSize: "14px",
+  } as React.CSSProperties,
+  scrollableContainer: {
+    width: "90%",
+    height: "70vh",
+    overflowY: "auto",
+    border: "1px solid #ddd",
+    borderRadius: "5px",
+    backgroundColor: "white",
+    marginLeft: "5%",
+  } as React.CSSProperties,
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+  } as React.CSSProperties,
+  th: {
+    padding: "10px",
+    border: "1px solid #ddd",
+    backgroundColor: "#f4f4f4",
+    textAlign: "center" as const,
+  },
+  td: {
+    padding: "10px",
+    border: "1px solid #ddd",
+    textAlign: "center" as const,
+  },
+  tr: {
+    cursor: "pointer",
+    transition: "background-color 0.2s",
+  } as React.CSSProperties,
+  
+  skeletonRow: {
+    backgroundColor: "#f0f0f0",
+    height: "20px",
+    borderRadius: "4px",
+    animation: "pulse 1.5s infinite ease-in-out",
+  } as React.CSSProperties,
+  skeletonCell: {
+    padding: "10px",
+    backgroundColor: "#e0e0e0",
+  } as React.CSSProperties,
 };
 
 export default StudentList;
